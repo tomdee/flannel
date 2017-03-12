@@ -5,6 +5,8 @@ dist/ld64*
 dist/libc*
 dist/*.aci
 dist/*.docker
+dist/strongswan*
+dist/*.so.*
 cover.out
 .editorconfig
 .idea/
