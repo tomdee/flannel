@@ -17,6 +17,7 @@ package ip
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"syscall"
 
@@ -115,4 +116,16 @@ func GetInterfaceByIP(ip net.IP) (*net.Interface, error) {
 	}
 
 	return nil, errors.New("No interface with given IP found")
+}
+
+func DirectRouting(ip net.IP) (bool, error) {
+	routes, err := netlink.RouteGet(ip)
+	if err != nil {
+		return false, fmt.Errorf("couldn't lookup route to %v: %v", ip, err)
+	}
+	if len(routes) == 1 && routes[0].Gw == nil {
+		// There is only a single route and there's no gateway (i.e. it's directly connected)
+		return true, nil
+	}
+	return false, nil
 }

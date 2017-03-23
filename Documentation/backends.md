@@ -105,3 +105,14 @@ Route Limits: GCE [limits](https://cloud.google.com/compute/docs/resource-quotas
 [alicloud-vpc]: https://github.com/coreos/flannel/blob/master/Documentation/alicloud-vpc-backend.md
 [amazon-vpc]: https://github.com/coreos/flannel/blob/master/Documentation/aws-vpc-backend.md
 [gce-backend]: https://github.com/coreos/flannel/blob/master/Documentation/gce-backend.md
+
+
+### IPIP
+
+Use in-kernel IPIP to encapsulate the packets.
+
+IPIP kind of tunnels is the simplest one. It has the lowest overhead, but can incapsulate only IPv4 unicast traffic, so you will not be able to setup OSPF, RIP or any other multicast-based protocol.
+
+Type:
+* `Type` (string): `ipip`
+* `DirectRouting` (Boolean): Enable direct routes (like `host-gw`) when the hosts are on the same subnet. IPIP will only be used to encapsulate packets to hosts on different subnets. Defaults to `false`.
