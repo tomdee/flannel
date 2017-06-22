@@ -51,6 +51,15 @@ func New(sm subnet.Manager, extIface *backend.ExternalInterface) (backend.Backen
 	return be, nil
 }
 
+func (be *HostgwBackend) RegisterNetworkWithoutLease(ctx context.Context, config *subnet.Config) (backend.Network, error) {
+	n := &network{
+		extIface: be.extIface,
+		sm:       be.sm,
+	}
+
+	return n, nil
+}
+
 func (be *HostgwBackend) RegisterNetwork(ctx context.Context, config *subnet.Config) (backend.Network, error) {
 	n := &network{
 		extIface: be.extIface,

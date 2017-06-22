@@ -23,9 +23,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
-	"strconv"
 
 	"github.com/coreos/pkg/flagutil"
 	log "github.com/golang/glog"
@@ -66,6 +66,7 @@ type CmdLineOpts struct {
 	kubeSubnetMgr          bool
 	iface                  string
 	ipMasq                 bool
+	allocateSubnet         bool
 	subnetFile             string
 	subnetDir              string
 	publicIP               string
@@ -96,6 +97,7 @@ func init() {
 	flag.BoolVar(&opts.kubeSubnetMgr, "kube-subnet-mgr", false, "Contact the Kubernetes API for subnet assignment instead of etcd.")
 	flag.BoolVar(&opts.help, "help", false, "print this message")
 	flag.BoolVar(&opts.version, "version", false, "print version and exit")
+	flag.BoolVar(&opts.allocateSubnet, "allocate-subnet", true, "allocate a subnet for this host. If set to false then no IP addresses can be assigned to workloads on this host.")
 	flag.StringVar(&opts.healthzIP, "healthz-ip", "0.0.0.0", "The IP address for healthz server to listen")
 	flag.IntVar(&opts.healthzPort, "healthz-port", 0, "The port for healthz server to listen(0 to disable)")
 }
@@ -179,34 +181,36 @@ func main() {
 		exit()
 	}
 
-	bn, err := be.RegisterNetwork(ctx, config)
-	if err != nil {
-		log.Errorf("Error registering network: %s", err)
-		exit()
-	}
-
-	// Set up ipMasq if needed
-	if opts.ipMasq {
-		err = network.SetupIPMasq(config.Network)
+	// Some actions should only be performed if a subnet has actually been allocated to this host
+	if opts.allocateSubnet {
+		bn, err := be.RegisterNetwork(ctx, config)
 		if err != nil {
-			// Continue, even though it failed.
-			log.Errorf("Failed to set up IP Masquerade: %v", err)
+			log.Errorf("Error registering network: %s", err)
+			exit()
 		}
 
-		defer func() {
-			if err := network.TeardownIPMasq(config.Network); err != nil {
-				log.Errorf("Failed to tear down IP Masquerade: %v", err)
+		// Set up ipMasq if needed
+		if opts.ipMasq {
+			err = network.SetupIPMasq(config.Network)
+			if err != nil {
+				// Continue, even though it failed.
+				log.Errorf("Failed to set up IP Masquerade: %v", err)
 			}
-		}()
-	}
 
-	if err := WriteSubnetFile(opts.subnetFile, config.Network, opts.ipMasq, bn); err != nil {
-		// Continue, even though it failed.
-		log.Warningf("Failed to write subnet file: %s", err)
-	} else {
-		log.Infof("Wrote subnet file to %s", opts.subnetFile)
-	}
+			defer func() {
+				if err := network.TeardownIPMasq(config.Network); err != nil {
+					log.Errorf("Failed to tear down IP Masquerade: %v", err)
+				}
+			}()
+		}
 
+		if err := WriteSubnetFile(opts.subnetFile, config.Network, opts.ipMasq, bn); err != nil {
+			// Continue, even though it failed.
+			log.Warningf("Failed to write subnet file: %s", err)
+		} else {
+			log.Infof("Wrote subnet file to %s", opts.subnetFile)
+		}
+	}
 	// Start "Running" the backend network. This will block until the context is done so run in another goroutine.
 	go bn.Run(ctx)
 	log.Infof("Finished starting backend.")
@@ -217,7 +221,7 @@ func main() {
 	if opts.kubeSubnetMgr {
 		// Wait for the shutdown to be signalled
 		<-ctx.Done()
-	} else {
+	} else if opts.allocateSubnet {
 		// Block waiting to renew the lease
 		_ = MonitorLease(ctx, sm, bn)
 	}

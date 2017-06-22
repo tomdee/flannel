@@ -61,3 +61,19 @@ func (n *SimpleNetwork) MTU() int {
 func (_ *SimpleNetwork) Run(ctx context.Context) {
 	<-ctx.Done()
 }
+
+type LeaselessNetwork struct {
+	ExtIface *ExternalInterface
+}
+
+func (n *LeaselessNetwork) Lease() *subnet.Lease {
+	return nil
+}
+
+func (n *LeaselessNetwork) MTU() int {
+	return n.ExtIface.Iface.MTU
+}
+
+func (_ *LeaselessNetwork) Run(ctx context.Context) {
+	<-ctx.Done()
+}
