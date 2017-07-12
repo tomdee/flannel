@@ -158,6 +158,7 @@ func newSubnetManager() (subnet.Manager, error) {
 		Prefix:    opts.etcdPrefix,
 		Username:  opts.etcdUsername,
 		Password:  opts.etcdPassword,
+		UseV3API:  true,
 	}
 
 	// Attempt to renew the lease for the subnet specified in the subnetFile
@@ -218,6 +219,7 @@ func main() {
 		}
 	}
 
+	//TODO - for etcdv3 this causes an exit if it can't contact the server
 	sm, err := newSubnetManager()
 	if err != nil {
 		log.Error("Failed to create SubnetManager: ", err)
