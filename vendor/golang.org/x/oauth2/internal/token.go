@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"golang.org/x/net/context"
+	"golang.org/x/net/context/ctxhttp"
 )
 
 // Token represents the crendentials used to authorize
@@ -103,9 +104,9 @@ var brokenAuthHeaderProviders = []string{
 	"https://app.box.com/",
 	"https://connect.stripe.com/",
 	"https://graph.facebook.com", // see https://github.com/golang/oauth2/issues/214
-	"https://login.microsoft.net",
 	"https://login.microsoftonline.com/",
 	"https://login.salesforce.com/",
+	"https://login.windows.net",
 	"https://oauth.sandbox.trainingpeaks.com/",
 	"https://oauth.trainingpeaks.com/",
 	"https://oauth.vk.com/",
@@ -189,7 +190,7 @@ func RetrieveToken(ctx context.Context, clientID, clientSecret, tokenURL string,
 	if !bustedAuth {
 		req.SetBasicAuth(clientID, clientSecret)
 	}
-	r, err := hc.Do(req)
+	r, err := ctxhttp.Do(ctx, hc, req)
 	if err != nil {
 		return nil, err
 	}

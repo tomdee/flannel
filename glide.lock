@@ -1,12 +1,12 @@
 hash: 2f18ae318a81ddf8a97889dd05c1d2cae675586788b641c8b2b1fec819177d69
-updated: 2017-06-29T10:56:36.891947592-07:00
+updated: 2017-07-12T07:46:57.50507348-07:00
 imports:
 - name: cloud.google.com/go
-  version: 7c205da84d8d024a8200be93ab042357c9a70177
+  version: 3e1507a0d90d17e4fdd8ef75e8f037ebecc854ba
   subpackages:
   - compute/metadata
 - name: github.com/aws/aws-sdk-go
-  version: 50762c1efc55dd2a05eac85fc170b0f65aeec28f
+  version: b1a7b51924b90a6ecdbaeb17e96418740ff07a1e
   subpackages:
   - aws
   - aws/awserr
@@ -33,11 +33,19 @@ imports:
   - private/protocol/xml/xmlutil
   - service/ec2
   - service/sts
+- name: github.com/beorn7/perks
+  version: 4c0e84591b9aa9e6dcfdf3e020114cd81f89d5f9
+  subpackages:
+  - quantile
 - name: github.com/coreos/etcd
   version: 0f4a535c2fb7a2920e13e2e19b9eaf6b2e9285e5
   subpackages:
+  - auth/authpb
   - client
   - clientv3
+  - etcdserver/api/v3rpc/rpctypes
+  - etcdserver/etcdserverpb
+  - mvcc/mvccpb
   - pkg/fileutil
   - pkg/pathutil
   - pkg/tlsutil
@@ -63,7 +71,7 @@ imports:
   subpackages:
   - spew
 - name: github.com/denverdino/aliyungo
-  version: f6cab0c35083495bd138281f0b9ca40ae2f15e19
+  version: d89db745e7897cf828d7f0651b251db1b60f6f17
   subpackages:
   - common
   - ecs
@@ -107,6 +115,14 @@ imports:
   version: 44d81051d367757e1c7c6a5a86423ece9afcf63c
 - name: github.com/gorilla/mux
   version: bcd8bc72b08df0f70df986b97f95590779502d31
+- name: github.com/grpc-ecosystem/go-grpc-prometheus
+  version: 6b7015e65d366bf3f19b2b2a000a831940f0f7e0
+- name: github.com/grpc-ecosystem/grpc-gateway
+  version: 84398b94e188ee336f307779b57b3aa91af7063c
+  subpackages:
+  - runtime
+  - runtime/internal
+  - utilities
 - name: github.com/howeyc/gopass
   version: 3ca23474a7c7203e0a0a070fd33508f6efdb9b3d
 - name: github.com/imdario/mergo
@@ -125,6 +141,28 @@ imports:
   - buffer
   - jlexer
   - jwriter
+- name: github.com/matttproud/golang_protobuf_extensions
+  version: c12348ce28de40eed0136aa2b644d0ee0650e56c
+  subpackages:
+  - pbutil
+- name: github.com/prometheus/client_golang
+  version: c5b7fccd204277076155f10851dad72b76a49317
+  subpackages:
+  - prometheus
+- name: github.com/prometheus/client_model
+  version: 6f3806018612930941127f2a7c6c453ba2c527d2
+  subpackages:
+  - go
+- name: github.com/prometheus/common
+  version: 3e6a7635bac6573d43f49f97b47eb9bda195dba8
+  subpackages:
+  - expfmt
+  - internal/bitbucket.org/ww/goautoneg
+  - model
+- name: github.com/prometheus/procfs
+  version: e645f4e5aaa8506fc71d6edbc5c4ff02c04c46f2
+  subpackages:
+  - xfs
 - name: github.com/PuerkitoBio/purell
   version: 8a290539e2e8629dbc4e6bad948158f790ec31f4
 - name: github.com/PuerkitoBio/urlesc
@@ -155,9 +193,11 @@ imports:
   - http2
   - http2/hpack
   - idna
+  - internal/timeseries
   - lex/httplex
+  - trace
 - name: golang.org/x/oauth2
-  version: 5432cc9688e6250a0dd8f5a5f4c781d92b398be6
+  version: cce311a261e6fcf29de72ca96827bdb0b7d9c9e6
   subpackages:
   - google
   - internal
@@ -181,7 +221,7 @@ imports:
   - unicode/norm
   - width
 - name: google.golang.org/api
-  version: e6586c9293b9d514c7f5d5076731ec977cff1be6
+  version: e665075b5ff79143ba49c58fab02df9dc122afd5
   subpackages:
   - compute/v1
   - gensupport
@@ -199,6 +239,17 @@ imports:
   - internal/remote_api
   - internal/urlfetch
   - urlfetch
+- name: google.golang.org/grpc
+  version: 777daa17ff9b5daef1cfdf915088a2ada3332bf0
+  subpackages:
+  - codes
+  - credentials
+  - grpclog
+  - internal
+  - metadata
+  - naming
+  - peer
+  - transport
 - name: gopkg.in/inf.v0
   version: 3887ee99ecf07df5b447e9b00d9c0b2adaa9f3e4
 - name: gopkg.in/yaml.v2
