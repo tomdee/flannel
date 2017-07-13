@@ -42,9 +42,10 @@ type etcdV3SubnetRegistry struct {
 }
 
 func newEtcdV3Client(c *EtcdConfig) (*etcd.Client, error) {
+
 	cli, err := etcd.New(etcd.Config{
 		// TODO - confid of etcd
-		Endpoints:   []string{"localhost:2379", "localhost:22379", "localhost:32379"},
+		Endpoints:   c.Endpoints,
 		DialTimeout: 5 * time.Second,
 	})
 
@@ -96,10 +97,9 @@ func newEtcdV3SubnetRegistry(config *EtcdConfig, cliNewFunc etcdV3NewFunc) (Regi
 }
 
 func (esr *etcdV3SubnetRegistry) getNetworkConfig(ctx context.Context) (string, error) {
+	log.V(5).Info("Getting network config")
 	key := path.Join(esr.etcdCfg.Prefix, "config")
-	//TODO - context, quorum=true
-
-	resp, err := esr.cli.Get(context.TODO(), key)
+	resp, err := esr.cli.Get(ctx, key)
 
 	if err != nil {
 		return "", err
@@ -115,9 +115,9 @@ func (esr *etcdV3SubnetRegistry) getNetworkConfig(ctx context.Context) (string, 
 // It returns the leases along with the "as-of" etcd-index that can be used as the starting
 // point for etcd watch.
 func (esr *etcdV3SubnetRegistry) getSubnets(ctx context.Context) ([]Lease, uint64, error) {
+	log.V(5).Info("Getting subnets config")
 	key := path.Join(esr.etcdCfg.Prefix, "subnets")
-	//TODO - context, quorum=true
-	resp, err := esr.cli.Get(context.TODO(), key)
+	resp, err := esr.cli.Get(ctx, key)
 
 	if err != nil {
 		return nil, 0, err
@@ -143,14 +143,13 @@ func (esr *etcdV3SubnetRegistry) getSubnets(ctx context.Context) ([]Lease, uint6
 }
 
 func (esr *etcdV3SubnetRegistry) getSubnet(ctx context.Context, sn ip.IP4Net) (*Lease, uint64, error) {
+	log.V(5).Infof("Getting subnet: %s", sn)
 	key := path.Join(esr.etcdCfg.Prefix, "subnets", MakeSubnetKey(sn))
-	//TODO - context, quorum=true
-	resp, err := esr.cli.Get(context.TODO(), key)
+	resp, err := esr.cli.Get(ctx, key)
 
 	if err != nil {
 		return nil, 0, err
 	}
-	//return string(resp.Kvs[0].Value), nil
 	l, err := nodeToLeasev3(string(resp.Kvs[0].Key), resp.Kvs[0].Value, uint64(resp.Kvs[0].ModRevision))
 	return l, uint64(resp.Header.Revision), err
 }
@@ -182,68 +181,42 @@ func nodeToLeasev3(key string, value []byte, revision uint64) (*Lease, error) {
 }
 
 func (esr *etcdV3SubnetRegistry) createSubnet(ctx context.Context, sn ip.IP4Net, attrs *LeaseAttrs, ttl time.Duration) (time.Time, error) {
+	log.V(5).Infof("Creating subnet (%s) with attrs %s and ttl %s", sn, attrs, ttl)
 	key := path.Join(esr.etcdCfg.Prefix, "subnets", MakeSubnetKey(sn))
 	value, err := json.Marshal(attrs)
 	if err != nil {
 		return time.Time{}, err
 	}
-	// TODO
-	//opts := &etcd.SetOptions{
-	//PrevExist: etcd.PrevNoExist,
-	//TTL:       ttl,
-	//}
-	_, err = esr.cli.Put(context.TODO(), key, string(value))
+
+	// Only create if needed
+	_, err = esr.cli.Txn(ctx).
+		If(etcd.Compare(etcd.Version(key), "=", 0)).
+		Then(etcd.OpPut(key, string(value))).
+		Commit()
 
 	if err != nil {
 		return time.Time{}, err
 	}
 
-	exp := time.Time{}
-	//if resp.Node.Expiration != nil {
-	//exp = *resp.Node.Expiration
-	//}
-
-	return exp, nil
+	return time.Now().Add(ttl), nil
 }
 
 func (esr *etcdV3SubnetRegistry) updateSubnet(ctx context.Context, sn ip.IP4Net, attrs *LeaseAttrs, ttl time.Duration, asof uint64) (time.Time, error) {
 	panic("")
-	//key := path.Join(esr.etcdCfg.Prefix, network, "subnets", MakeSubnetKey(sn))
 	return time.Time{}, nil
-	//value, err := json.Marshal(attrs)
-	//if err != nil {
-	//return time.Time{}, err
-	//}
-
-	//resp, err := esr.client().Set(ctx, key, string(value), &etcd.SetOptions{
-	//PrevIndex: asof,
-	//TTL:       ttl,
-	//})
-	//if err != nil {
-	//return time.Time{}, err
-	//}
-
-	//exp := time.Time{}
-	//if resp.Node.Expiration != nil {
-	//exp = *resp.Node.Expiration
-	//}
-
-	//return exp, nil
 }
 
 func (esr *etcdV3SubnetRegistry) deleteSubnet(ctx context.Context, sn ip.IP4Net) error {
 	panic("")
-	//key := path.Join(esr.etcdCfg.Prefix, network, "subnets", MakeSubnetKey(sn))
-	//_, err := esr.client().Delete(ctx, key, nil)
-	//return err
 	return nil
 }
 
 func (esr *etcdV3SubnetRegistry) watchSubnets(ctx context.Context, since uint64) (Event, uint64, error) {
+	log.V(5).Infof("Watching subnets since %d", since)
 	key := path.Join(esr.etcdCfg.Prefix, "subnets")
 	// TODO - not sure about the watchprefix stuff
 	since++
-	rch := esr.cli.Watch(context.Background(), key, etcd.WithPrefix(), etcd.WithRev(int64(since)))
+	rch := esr.cli.Watch(ctx, key, etcd.WithPrefix(), etcd.WithRev(int64(since)))
 	for wresp := range rch {
 		if wresp.Canceled {
 			return Event{}, 0, wresp.Err()
@@ -259,6 +232,7 @@ func (esr *etcdV3SubnetRegistry) watchSubnets(ctx context.Context, since uint64)
 }
 
 func (esr *etcdV3SubnetRegistry) watchSubnet(ctx context.Context, since uint64, sn ip.IP4Net) (Event, uint64, error) {
+	log.V(5).Infof("Watching subnet (%s) since %d", sn, since)
 	since++
 	key := path.Join(esr.etcdCfg.Prefix, "subnets", MakeSubnetKey(sn))
 	rch := esr.cli.Watch(context.Background(), key, etcd.WithRev(int64(since)))
@@ -275,23 +249,6 @@ func (esr *etcdV3SubnetRegistry) watchSubnet(ctx context.Context, since uint64, 
 	}
 	return Event{}, 0, nil
 }
-
-//func (esr *etcdV3SubnetRegistry) client() etcd.KeysAPI {
-//esr.mux.Lock()
-//defer esr.mux.Unlock()
-//return esr.cli
-//}
-
-//func (esr *etcdV3SubnetRegistry) resetClient() {
-//esr.mux.Lock()
-//defer esr.mux.Unlock()
-
-//var err error
-//esr.cli, err = newEtcdClient(esr.etcdCfg)
-//if err != nil {
-//panic(fmt.Errorf("resetClient: error recreating etcd client: %v", err))
-//}
-//}
 
 func parseSubnetWatchResponseV3(resp *etcd.Event) (Event, error) {
 	sn := ParseSubnetKey(string(resp.Kv.Key))
@@ -332,51 +289,3 @@ func parseSubnetWatchResponseV3(resp *etcd.Event) (Event, error) {
 		return evt, nil
 	}
 }
-
-//func (esr *etcdV3SubnetRegistry) parseNetworkWatchResponse(resp *etcd.Response) (Event, uint64, error) {
-//index := resp.Node.ModifiedIndex
-//netname, isConfig := esr.parseNetworkKey(resp.Node.Key)
-//if netname == "" {
-//return Event{}, index, errTryAgain
-//}
-
-//evt := Event{}
-
-//switch resp.Action {
-//case "delete":
-//evt = Event{
-//EventRemoved,
-//Lease{},
-//netname,
-//}
-
-//default:
-//if !isConfig {
-//// Ignore non .../<netname>/config keys; tell caller to try again
-//return Event{}, index, errTryAgain
-//}
-
-//_, err := ParseConfig(resp.Node.Value)
-//if err != nil {
-//return Event{}, index, err
-//}
-
-//evt = Event{
-//EventAdded,
-//Lease{},
-//netname,
-//}
-//}
-
-//return evt, index, nil
-//}
-
-//// Returns network name from config key (eg, /coreos.com/network/foobar/config),
-//// if the 'config' key isn't present we don't consider the network valid
-//func (esr *etcdV3SubnetRegistry) parseNetworkKey(s string) (string, bool) {
-//if parts := esr.networkRegex.FindStringSubmatch(s); len(parts) == 3 {
-//return parts[1], parts[2] != ""
-//}
-
-//return "", false
-//}

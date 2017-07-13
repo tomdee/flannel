@@ -219,7 +219,7 @@ func main() {
 		}
 	}
 
-	//TODO - for etcdv3 this causes an exit if it can't contact the server
+	//TODO - for etcdv3 this causes an exit if it can't contact the server - problem
 	sm, err := newSubnetManager()
 	if err != nil {
 		log.Error("Failed to create SubnetManager: ", err)
@@ -342,15 +342,27 @@ func getConfig(ctx context.Context, sm subnet.Manager) (*subnet.Config, error) {
 }
 
 func MonitorLease(ctx context.Context, sm subnet.Manager, bn backend.Network) error {
-	// Use the subnet manager to start watching leases.
-	evts := make(chan subnet.Event)
-	go subnet.WatchLease(ctx, sm, bn.Lease().Subnet, evts)
 	renewMargin := time.Duration(opts.subnetLeaseRenewMargin) * time.Minute
-	dur := bn.Lease().Expiration.Sub(time.Now()) - renewMargin
+
+	// Use the subnet manager to start watching the current host's lease.
+	evts := make(chan subnet.Event)
+	log.Info("Using subnet manager to watch for lease updates for this host")
+	go subnet.WatchLease(ctx, sm, bn.Lease().Subnet, evts)
+
+	// Consume the initial sync event
+	e := <-evts
+	if e.Type != subnet.EventAdded {
+		log.Errorf("Initial lease sync didn't return a ADD event.")
+		return errInterrupted
+	}
+
+	dur := e.Lease.Expiration.Sub(time.Now()) - renewMargin
 
 	for {
+		log.Infof("Waiting %s to renew lease", dur)
 		select {
 		case <-time.After(dur):
+			log.Infof("Attempting to renew lease")
 			err := sm.RenewLease(ctx, bn.Lease())
 			if err != nil {
 				log.Error("Error renewing lease (trying again in 1 min): ", err)
@@ -361,12 +373,12 @@ func MonitorLease(ctx context.Context, sm subnet.Manager, bn backend.Network) er
 			log.Info("Lease renewed, new expiration: ", bn.Lease().Expiration)
 			dur = bn.Lease().Expiration.Sub(time.Now()) - renewMargin
 
-		case e := <-evts:
+		case e = <-evts:
 			switch e.Type {
 			case subnet.EventAdded:
 				bn.Lease().Expiration = e.Lease.Expiration
 				dur = bn.Lease().Expiration.Sub(time.Now()) - renewMargin
-				log.Infof("Waiting for %s to renew lease", dur)
+				log.Infof("Subnet details updated. New lease duration is %s", dur)
 
 			case subnet.EventRemoved:
 				log.Error("Lease has been revoked. Shutting down daemon.")

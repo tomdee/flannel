@@ -23,10 +23,10 @@ import (
 	"github.com/coreos/flannel/pkg/ip"
 )
 
-// WatchLeases performs a long term watch of the given network's subnet leases
-// and communicates addition/deletion events on receiver channel. It takes care
-// of handling "fall-behind" logic where the history window has advanced too far
-// and it needs to diff the latest snapshot with its saved state and generate events
+// WatchLeases performs a long term watch of subnet leases and communicates
+// addition/deletion events on receiver channel. It takes care of handling
+// "fall-behind" logic where the history window has advanced too far and
+// it needs to diff the latest snapshot with its saved state and generate events
 func WatchLeases(ctx context.Context, sm Manager, ownLease *Lease, receiver chan []Event) {
 	lw := &leaseWatcher{
 		ownLease: ownLease,
@@ -154,7 +154,7 @@ func deleteLease(l []Lease, i int) []Lease {
 	return l[:len(l)-1]
 }
 
-// WatchLease performs a long term watch of the given network's subnet lease
+// WatchLease performs a long term watch of the current node's subnet lease
 // and communicates addition/deletion events on receiver channel. It takes care
 // of handling "fall-behind" logic where the history window has advanced too far
 // and it needs to diff the latest snapshot with its saved state and generate events

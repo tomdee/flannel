@@ -221,6 +221,7 @@ func (m *LocalManager) tryAcquireLease(ctx context.Context, config *Config, extI
 		}
 	}
 
+	// TODO - etcd v3 shouldn't call createSubnet if it doesn't need to
 	exp, err := m.registry.createSubnet(ctx, sn, attrs, subnetTTL)
 	switch {
 	case err == nil:

@@ -77,6 +77,7 @@ func (n *network) Run(ctx context.Context) {
 }
 
 func (n *network) handleSubnetEvents(batch []subnet.Event) {
+	log.Info("Handling subnet events")
 	for _, evt := range batch {
 		switch evt.Type {
 		case subnet.EventAdded:
