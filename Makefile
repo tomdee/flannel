@@ -65,7 +65,9 @@ endif
 ### TESTING
 test: license-check gofmt
 	# Run the unit tests
-	docker run --cap-add=NET_ADMIN --rm -v $(shell pwd):/go/src/github.com/coreos/flannel golang:1.8.3 go test -v -cover $(TEST_PACKAGES_EXPANDED)
+	# NET_ADMIN capacity is required to do some network operation
+	# SYS_ADMIN capacity is required to create network namespace
+	docker run --cap-add=NET_ADMIN --cap-add=SYS_ADMIN --rm -v $(shell pwd):/go/src/github.com/coreos/flannel golang:1.8.3 go test -v -cover $(TEST_PACKAGES_EXPANDED)
 
 	# Test the docker-opts script
 	cd dist; ./mk-docker-opts_tests.sh

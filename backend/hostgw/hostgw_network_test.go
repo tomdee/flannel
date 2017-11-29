@@ -17,24 +17,18 @@ package hostgw
 
 import (
 	"net"
-	"runtime"
 	"testing"
 
 	"github.com/coreos/flannel/backend"
 	"github.com/coreos/flannel/pkg/ip"
+	"github.com/coreos/flannel/pkg/ns"
 	"github.com/coreos/flannel/subnet"
 	"github.com/vishvananda/netlink"
-	"github.com/vishvananda/netns"
 )
 
 func TestRouteCache(t *testing.T) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	origns, _ := netns.Get()
-	defer origns.Close()
-	newns, _ := netns.New()
-	netns.Set(newns)
-	defer newns.Close()
+	teardown := ns.SetUpNetlinkTest(t)
+	defer teardown()
 
 	lo, err := netlink.LinkByName("lo")
 	if err != nil {

@@ -17,7 +17,7 @@ package ipip
 import (
 	"encoding/json"
 	"fmt"
-	"net"
+	"syscall"
 
 	"github.com/coreos/flannel/backend"
 	"github.com/coreos/flannel/pkg/ip"
@@ -93,34 +93,47 @@ func (be *IPIPBackend) RegisterNetwork(ctx context.Context, config *subnet.Confi
 }
 
 func (be *IPIPBackend) configureIPIPDevice(lease *subnet.Lease) (*tunnelDev, error) {
-	link, err := netlink.LinkByName(tunnelName)
-	if err != nil {
-		// When modprobe ipip module, a tunl0 ipip device is created automatically per network namespace by ipip kernel module.
-		// It is the namespace default IPIP device with attributes local=any and remote=any.
-		// When receiving IPIP protocol packets, kernel will forward them to tunl0 as a fallback device
-		// if it can't find an option whose local/remote attribute matches their src/dst ip address more precisely.
-		// See https://github.com/torvalds/linux/blob/v4.13/net/ipv4/ip_tunnel.c#L85-L95 .
+	// When modprobe ipip module, a tunl0 ipip device is created automatically per network namespace by ipip kernel module.
+	// It is the namespace default IPIP device with attributes local=any and remote=any.
+	// When receiving IPIP protocol packets, kernel will forward them to tunl0 as a fallback device
+	// if it can't find an option whose local/remote attribute matches their src/dst ip address more precisely.
+	// See https://github.com/torvalds/linux/blob/v4.13/net/ipv4/ip_tunnel.c#L85-L95 .
 
-		// So we have two options of creating ipip device, either rename tunl0 to flannel.ipip or create an new ipip device
-		// and set local attribute of flannel.ipip to distinguish these two devices.
-		// Considering tunl0 might be used by users, so choose the later option.
-		link = &netlink.Iptun{LinkAttrs: netlink.LinkAttrs{Name: tunnelName}, Local: be.extIface.IfaceAddr}
-		if err := netlink.LinkAdd(link); err != nil {
-			return nil, fmt.Errorf("failed to create tunnel %v: %v", tunnelName, err)
+	// So we have two options of creating ipip device, either rename tunl0 to flannel.ipip or create an new ipip device
+	// and set local attribute of flannel.ipip to distinguish these two devices.
+	// Considering tunl0 might be used by users, so choose the later option.
+	link := &netlink.Iptun{LinkAttrs: netlink.LinkAttrs{Name: tunnelName}, Local: be.extIface.IfaceAddr}
+	if err := netlink.LinkAdd(link); err != nil {
+		if err != syscall.EEXIST {
+			return nil, err
 		}
-	}
-	// flannel will never make this happen. This situation can only be caused by a user, so get them to sort it out.
-	if link.Type() != "ipip" {
-		return nil, fmt.Errorf("%v isn't an ipip mode device", tunnelName)
-	}
-	ipip, ok := link.(*netlink.Iptun)
-	if !ok {
-		return nil, fmt.Errorf("%s isn't an iptun device %#v", tunnelName, link)
-	}
+		existing, err := netlink.LinkByName(tunnelName)
+		if err != nil {
+			return nil, err
+		}
+		// flannel will never make the following situations happen. They can only be caused by a user, so get them to sort it out.
+		if existing.Type() != "ipip" {
+			return nil, fmt.Errorf("%v isn't an ipip mode device, please fix it and try again", tunnelName)
+		}
+		ipip, ok := existing.(*netlink.Iptun)
+		if !ok {
+			return nil, fmt.Errorf("%s isn't an iptun device %#v", tunnelName, link)
+		}
+		// Don't set remote attribute making flannel.ipip an one to many tunnel device.
+		if ipip.Remote != nil && ipip.Remote.String() != "0.0.0.0" {
+			return nil, fmt.Errorf("remote address %v of tunnel %s is not 0.0.0.0, please fix it and try again", ipip.Remote, tunnelName)
+		}
+		// local attribute may change if a user changes iface configuration, we need to recreate the device to ensure local attribute is expected.
+		if ipip.Local == nil || !ipip.Local.Equal(be.extIface.IfaceAddr) {
+			glog.Warningf("%q already exists with incompatable local attribute: %v; recreating device", tunnelName, ipip.Local)
 
-	// Don't set remote attribute making flannel.ipip an one to many tunnel device.
-	if (ipip.Local != nil && !ipip.Local.Equal(be.extIface.IfaceAddr)) || (ipip.Remote != nil && ipip.Remote.String() != "0.0.0.0") {
-		return nil, fmt.Errorf("local %v or remote %v of tunnel %s is not expected, please fix it and try again", ipip.Local, ipip.Remote, tunnelName)
+			if err = netlink.LinkDel(existing); err != nil {
+				return nil, fmt.Errorf("failed to delete interface: %v", err)
+			}
+			if err = netlink.LinkAdd(link); err != nil {
+				return nil, fmt.Errorf("failed to create ipip interface: %v", err)
+			}
+		}
 	}
 
 	// Due to the extra 20 byte IP header that the tunnel will add to each packet,
@@ -140,40 +153,16 @@ func (be *IPIPBackend) configureIPIPDevice(lease *subnet.Lease) (*tunnelDev, err
 		link.Attrs().MTU = expectMTU
 	}
 
-	if err := netlink.LinkSetUp(link); err != nil {
-		return nil, fmt.Errorf("failed to set %v UP: %v", tunnelName, err)
-	}
-
-	existingAddrs, err := netlink.AddrList(link, netlink.FAMILY_V4)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list addr for dev %v: %v", tunnelName, err)
-	}
-
-	// flannel will never make this happen. This situation can only be caused by a user, so get them to sort it out.
-	if len(existingAddrs) > 1 {
-		return nil, fmt.Errorf("link has incompatible addresses. Remove additional addresses and try again. %#v", link)
-	}
-
 	// Ensure that the device has a /32 address so that no broadcast routes are created.
 	// This IP is just used as a source address for host to workload traffic (so
 	// the return path for the traffic has an address on the flannel network to use as the destination)
-	newAddr := netlink.Addr{IPNet: &net.IPNet{IP: lease.Subnet.Network().IP.ToIP(), Mask: net.CIDRMask(32, 32)}}
-
-	// If the device has an incompatible address then delete it. This can happen if the lease changes for example.
-	if len(existingAddrs) == 1 && !existingAddrs[0].Equal(newAddr) {
-		if err := netlink.AddrDel(link, &existingAddrs[0]); err != nil {
-			return nil, fmt.Errorf("failed to remove IP address %s from %s: %s", newAddr.String(), link.Attrs().Name, err)
-		}
-		existingAddrs = []netlink.Addr{}
+	if err := ip.EnsureV4AddressOnLink(ip.IP4Net{IP: lease.Subnet.IP, PrefixLen: 32}, link); err != nil {
+		return nil, fmt.Errorf("failed to ensure address of interface %s: %s", link.Attrs().Name, err)
 	}
-
-	// Actually add the desired address to the interface if needed.
-	if len(existingAddrs) == 0 {
-		if err := netlink.AddrAdd(link, &newAddr); err != nil {
-			return nil, fmt.Errorf("failed to add IP address %s to %s: %s", newAddr.String(), link.Attrs().Name, err)
-		}
+	if err := netlink.LinkSetUp(link); err != nil {
+		return nil, fmt.Errorf("failed to set %v UP: %v", tunnelName, err)
 	}
-	return &tunnelDev{iptun: link.(*netlink.Iptun)}, nil
+	return &tunnelDev{iptun: link}, nil
 }
 
 type tunnelDev struct {
