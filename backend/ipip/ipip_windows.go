@@ -1,4 +1,4 @@
-// Copyright 2015 flannel authors
+// Copyright 2017 flannel authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,34 +13,12 @@
 // limitations under the License.
 // +build windows
 
-package hostgw
+package ipip
 
 import (
-	"golang.org/x/net/context"
-
-	"github.com/coreos/flannel/backend"
-	"github.com/coreos/flannel/subnet"
-
-	netroute "github.com/rakelkar/gonetsh/netroute"
+	log "github.com/golang/glog"
 )
 
-type network struct {
-	name      string
-	extIface  *backend.ExternalInterface
-	linkIndex int
-	rl        []netroute.Route
-	lease     *subnet.Lease
-	sm        subnet.Manager
-}
-
-func (n *network) Lease() *subnet.Lease {
-	return n.lease
-}
-
-func (n *network) MTU() int {
-	return n.extIface.Iface.MTU
-}
-
-func (n *network) Run(ctx context.Context) {
-
+func init() {
+	log.Infof("ipip is not supported on this platform")
 }

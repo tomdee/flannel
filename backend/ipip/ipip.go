@@ -60,12 +60,12 @@ func (be *IPIPBackend) RegisterNetwork(ctx context.Context, config *subnet.Confi
 	}
 	glog.Infof("IPIP config: DirectRouting=%v", cfg.DirectRouting)
 
-	n := &network{
+	n := &backend.RouteNetwork{
 		SimpleNetwork: backend.SimpleNetwork{
 			ExtIface: be.extIface,
 		},
-		sm:          be.sm,
-		backendType: backendType,
+		SM:          be.sm,
+		BackendType: backendType,
 	}
 
 	attrs := &subnet.LeaseAttrs{
@@ -82,17 +82,36 @@ func (be *IPIPBackend) RegisterNetwork(ctx context.Context, config *subnet.Confi
 	default:
 		return nil, fmt.Errorf("failed to acquire lease: %v", err)
 	}
-	dev, err := be.configureIPIPDevice(n.SubnetLease)
+	link, err := be.configureIPIPDevice(n.SubnetLease)
 	if err != nil {
 		return nil, err
 	}
-	dev.directRouting = cfg.DirectRouting
-	n.dev = dev
+	n.Mtu = link.MTU
+	n.LinkIndex = link.Index
+	n.GetRoute = func(lease *subnet.Lease) *netlink.Route {
+		route := netlink.Route{
+			Dst:       lease.Subnet.ToIPNet(),
+			Gw:        lease.Attrs.PublicIP.ToIP(),
+			LinkIndex: n.LinkIndex,
+			Flags:     int(netlink.FLAG_ONLINK),
+		}
+		if cfg.DirectRouting {
+			dr, err := ip.DirectRouting(lease.Attrs.PublicIP.ToIP())
+			if err != nil {
+				glog.Error(err)
+			}
+			if dr {
+				glog.V(2).Infof("configure route to %v via direct routing", lease.Attrs.PublicIP.String())
+				route.LinkIndex = n.ExtIface.Iface.Index
+			}
+		}
+		return &route
+	}
 
 	return n, nil
 }
 
-func (be *IPIPBackend) configureIPIPDevice(lease *subnet.Lease) (*tunnelDev, error) {
+func (be *IPIPBackend) configureIPIPDevice(lease *subnet.Lease) (*netlink.Iptun, error) {
 	// When modprobe ipip module, a tunl0 ipip device is created automatically per network namespace by ipip kernel module.
 	// It is the namespace default IPIP device with attributes local=any and remote=any.
 	// When receiving IPIP protocol packets, kernel will forward them to tunl0 as a fallback device
@@ -162,10 +181,5 @@ func (be *IPIPBackend) configureIPIPDevice(lease *subnet.Lease) (*tunnelDev, err
 	if err := netlink.LinkSetUp(link); err != nil {
 		return nil, fmt.Errorf("failed to set %v UP: %v", tunnelName, err)
 	}
-	return &tunnelDev{iptun: link}, nil
-}
-
-type tunnelDev struct {
-	iptun         *netlink.Iptun
-	directRouting bool
+	return link, nil
 }
